@@ -1,0 +1,180 @@
+from multiprocessing.managers import Value
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+from matplotlib.widgets import Button, TextBox
+
+def liczenie_a(m1, m2, g, L1, L2, theta1, theta2, okres_czasu=60000, dt = 0.016):
+    theta1 = np.radians(theta1)  
+    theta2 = np.radians(theta2)
+    omega1, omega2 = 0.0, 0.0
+    theta1_wart, theta2_wart = [theta1], [theta2]
+    x1_wart, x2_wart, y1_wart, y2_wart, omega1vals, omega2vals = [], [], [], [], [], []
+    for i in range(okres_czasu):
+        delta = theta2 - theta1
+        mian1 = (m1 + m2) * L1 - m2 * L1 * np.cos(delta) ** 2
+        mian2 = (L2 / L1) * mian1
+
+        a1 = (m2 * L1 * omega1 ** 2 * np.sin(delta) * np.cos(delta) +
+              m2 * g * np.sin(theta2) * np.cos(delta) +
+              m2 * L2 * omega2 ** 2 * np.sin(delta) -
+              (m1 + m2) * g * np.sin(theta1)) / mian1
+
+        a2 = (-m2 * L2 * omega2 ** 2 * np.sin(delta) * np.cos(delta) +
+              (m1 + m2) * g * np.sin(theta1) * np.cos(delta) -
+              (m1 + m2) * L1 * omega1 ** 2 * np.sin(delta) -
+              (m1 + m2) * g * np.sin(theta2)) / mian2
+        omega1 += a1 * dt
+        omega2 += a2 * dt
+        theta1 += omega1 * dt
+        theta2 += omega2 * dt
+        x1 = L1*np.sin(theta1)
+        y1 = -L1*np.cos(theta1)
+        x2 = x1 + L2*np.sin(theta2)
+        y2 = y1-L2*np.cos(theta2)
+        
+        x1_wart.append(x1)
+        x2_wart.append(x2)
+        y1_wart.append(y1)
+        y2_wart.append(y2)
+        omega1vals.append(omega1)
+        omega2vals.append(omega2)
+        theta1_wart.append(theta1)
+        theta2_wart.append(theta2)
+
+    return x1_wart, x2_wart, y1_wart, y2_wart, omega1vals, omega2vals
+
+
+# Inicjalizacja parametrów globalnych
+m1, m2 = 1.0, 1.0
+L1, L2 = 1.0, 1.0
+theta1, theta2 = 45.0, 45.0
+g = 9.8
+x1, x2, y1, y2, omega1_vals, omega2_vals  = liczenie_a(m1, m2, g, L1, L2, theta1, theta2)
+
+
+fig, ax = plt.subplots()
+plt.subplots_adjust(bottom=0.5)
+ax.set_aspect('equal')
+ax.set_xlabel("X [m]")  
+ax.set_ylabel("Y [m]")
+ax.set_xlim(-L1-L2-1,L1+L2+1)
+ax.set_ylim(-L1-L2-1,L1+L2+1)
+linia, = ax.plot([], [], 'o-', lw=2) #musi byc przecinek bo linia, tworzy obj Line2D używany w matplitlib i funcanim - bez "," tworzy sie lista a nie obj do animacji
+trajektoria, = ax.plot([], [], 'r-', lw=0.5, alpha=0.5)
+timer = ax.text(0.05, 0.95, '', transform=ax.transAxes, fontsize=10, color='black')
+uwaga = ax.text(0.15, 0.70, '', transform=ax.transAxes, fontsize=10, color='black')
+omega1_text = ax.text(0.05, 0.85, '', transform=ax.transAxes, fontsize=10, color='blue')
+omega2_text = ax.text(0.05, 0.80, '', transform=ax.transAxes, fontsize=10, color='green')
+
+# Stan animacji
+ 
+
+ani = None
+
+
+paused = False  
+current_frame = 0
+
+def init():
+    linia.set_data([], [])
+    trajektoria.set_data([], [])
+    timer.set_text('')
+    omega1_text.set_text('')
+    omega2_text.set_text('')
+    uwaga.set_text('')
+    return linia, trajektoria, timer, omega1_text, omega2_text, uwaga
+def update(frame):
+    time = frame * 0.0036
+    x = [0, x1[frame], x2[frame]]
+    y = [0, y1[frame], y2[frame]]
+    linia.set_data(x, y)
+    trajektoria.set_data(x2[:frame], y2[:frame])
+    timer.set_text(f"Czas: {time:.2f} s")
+    omega1_text.set_text(f"Prędkość kątowa 1. ciała[rad/s]: {omega1_vals[frame]:.2f}")
+    omega2_text.set_text(f"Prędkość kątowa 2. ciała[rad/s]: {omega2_vals[frame]:.2f}")
+    uwaga.set_text
+    return linia, trajektoria, timer, omega1_text, omega2_text, uwaga
+
+
+
+ani = FuncAnimation(fig, update, frames=len(x1), init_func=init, blit=True, interval=0.001)
+
+
+def start_animation(event):
+    if not paused:
+        ani.event_source.start()  # Rozpoczynanie animacji
+
+
+def stop_animation(event):
+    global paused
+    ani.pause()  # Zatrzymywanie animacji
+
+
+def aktualizuj_dane(event):
+    global m1, m2, L1, L2, theta1, theta2, g, x1, x2, y1, y2, ani
+    
+    try:
+        m1 = float(textbox_m1.text)
+        m2 = float(textbox_m2.text)
+        L1 = float(textbox_L1.text)
+        L2 = float(textbox_L2.text)
+        theta1 = float(textbox_theta1.text)
+        theta2 = float(textbox_theta2.text)
+        g = float(textbox_g.text)
+        
+        if any(val < 0 for val in [m1, m2, L1, L2, theta1, theta2, g]):
+            uwaga.set_text("Wartości muszą być dodatnie.")
+            return
+
+        x1, x2, y1, y2, omega1_vals, omega2_vals   = liczenie_a(m1, m2, g, L1, L2, theta1, theta2)
+
+        ani.event_source.stop()
+        ani = FuncAnimation(fig, update, frames=len(x1), init_func=init, blit=True, interval=0.001)
+        ax.set_xlim(-L1-L2-1,L1+L2+1)
+        ax.set_ylim(-L1-L2-1,L1+L2+1)
+        ani.event_source.start()
+        
+        uwaga.set_text('')
+        
+    except ValueError:
+        uwaga.set_text("Wprowadź poprawne wartości liczbowe.")
+
+# Dodanie pól tekstowych
+axbox_m1 = plt.axes([0.5, 0.05, 0.1, 0.03])
+textbox_m1 = TextBox(axbox_m1, 'Masa 1 [kg]', initial=str(m1))
+
+axbox_m2 = plt.axes([0.5, 0.1, 0.1, 0.03])
+textbox_m2 = TextBox(axbox_m2, 'Masa 2 [kg]', initial=str(m2))
+
+axbox_L1 = plt.axes([0.5, 0.15, 0.1, 0.03])
+textbox_L1 = TextBox(axbox_L1, 'Długość 1 [m]', initial=str(L1))
+
+axbox_L2 = plt.axes([0.5, 0.2, 0.1, 0.03])
+textbox_L2 = TextBox(axbox_L2, 'Długość 2 [m]', initial=str(L2))
+
+axbox_theta1 = plt.axes([0.5, 0.25, 0.1, 0.03])
+textbox_theta1 = TextBox(axbox_theta1, 'Kąt 1[stopnie]', initial=str(theta1))
+
+axbox_theta2 = plt.axes([0.5, 0.3, 0.1, 0.03])
+textbox_theta2 = TextBox(axbox_theta2, 'Kąt 2[stopnie]', initial=str(theta2))
+
+axbox_g = plt.axes([0.5, 0.35, 0.1, 0.03])
+textbox_g = TextBox(axbox_g, 'Wartość przyśpieszenia(grawitacji)[m/s^2]', initial=str(g))
+
+# Dodanie przycisku
+ax_button = plt.axes([0.85, 0.02, 0.1, 0.04])
+button = Button(ax_button, 'Aktualizuj')
+button.on_clicked(aktualizuj_dane)
+
+
+ax_button_start = plt.axes([0.85, 0.12, 0.1, 0.04])
+button_start = Button(ax_button_start, 'Start')
+button_start.on_clicked(start_animation)
+
+ax_button_stop = plt.axes([0.85, 0.07, 0.1, 0.04])
+button_stop = Button(ax_button_stop, 'Stop (Naciśnij dwukrotnie)')
+button_stop.on_clicked(stop_animation)
+
+
+plt.show()
