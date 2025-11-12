@@ -1,180 +1,190 @@
-from multiprocessing.managers import Value
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button, TextBox
 
-def liczenie_a(m1, m2, g, L1, L2, theta1, theta2, okres_czasu=60000, dt = 0.016):
-    theta1 = np.radians(theta1)  
+# Initial parameters
+ani = None
+paused = False
+mass1, mass2 = 1.0, 1.0
+length1, length2 = 1.0, 1.0
+theta1, theta2 = 45.0, 45.0
+gravitational_force = 9.8
+dt = 0.016  # time stamp (s)
+
+
+def calculate_acceleration(mass1, mass2, gravitational_force, length1, length2, theta1, theta2, time_period=60000, dt=0.016):
+    theta1 = np.radians(theta1)
     theta2 = np.radians(theta2)
     omega1, omega2 = 0.0, 0.0
-    theta1_wart, theta2_wart = [theta1], [theta2]
-    x1_wart, x2_wart, y1_wart, y2_wart, omega1vals, omega2vals = [], [], [], [], [], []
-    for i in range(okres_czasu):
+    theta1_vals, theta2_vals = [theta1], [theta2]
+    x1_vals, x2_vals, y1_vals, y2_vals = [], [], [], []
+    omega1_vals, omega2_vals = [], []
+
+    for i in range(time_period):
         delta = theta2 - theta1
-        mian1 = (m1 + m2) * L1 - m2 * L1 * np.cos(delta) ** 2
-        mian2 = (L2 / L1) * mian1
+        denom1 = (mass1 + mass2) * length1 - mass2 * length1 * np.cos(delta) ** 2
+        denom2 = (length2 / length1) * denom1
 
-        a1 = (m2 * L1 * omega1 ** 2 * np.sin(delta) * np.cos(delta) +
-              m2 * g * np.sin(theta2) * np.cos(delta) +
-              m2 * L2 * omega2 ** 2 * np.sin(delta) -
-              (m1 + m2) * g * np.sin(theta1)) / mian1
+        acceleration1 = (mass2 * length1 * omega1 ** 2 * np.sin(delta) * np.cos(delta) +
+                         mass2 * gravitational_force * np.sin(theta2) * np.cos(delta) +
+                         mass2 * length2 * omega2 ** 2 * np.sin(delta) -
+                         (mass1 + mass2) * gravitational_force * np.sin(theta1)) / denom1
 
-        a2 = (-m2 * L2 * omega2 ** 2 * np.sin(delta) * np.cos(delta) +
-              (m1 + m2) * g * np.sin(theta1) * np.cos(delta) -
-              (m1 + m2) * L1 * omega1 ** 2 * np.sin(delta) -
-              (m1 + m2) * g * np.sin(theta2)) / mian2
-        omega1 += a1 * dt
-        omega2 += a2 * dt
+        acceleration2 = (-mass2 * length2 * omega2 ** 2 * np.sin(delta) * np.cos(delta) +
+                         (mass1 + mass2) * gravitational_force * np.sin(theta1) * np.cos(delta) -
+                         (mass1 + mass2) * length1 * omega1 ** 2 * np.sin(delta) -
+                         (mass1 + mass2) * gravitational_force * np.sin(theta2)) / denom2
+
+        omega1 += acceleration1 * dt
+        omega2 += acceleration2 * dt
         theta1 += omega1 * dt
         theta2 += omega2 * dt
-        x1 = L1*np.sin(theta1)
-        y1 = -L1*np.cos(theta1)
-        x2 = x1 + L2*np.sin(theta2)
-        y2 = y1-L2*np.cos(theta2)
-        
-        x1_wart.append(x1)
-        x2_wart.append(x2)
-        y1_wart.append(y1)
-        y2_wart.append(y2)
-        omega1vals.append(omega1)
-        omega2vals.append(omega2)
-        theta1_wart.append(theta1)
-        theta2_wart.append(theta2)
 
-    return x1_wart, x2_wart, y1_wart, y2_wart, omega1vals, omega2vals
+        x1 = length1 * np.sin(theta1)
+        y1 = -length1 * np.cos(theta1)
+        x2 = x1 + length2 * np.sin(theta2)
+        y2 = y1 - length2 * np.cos(theta2)
 
+        x1_vals.append(x1)
+        x2_vals.append(x2)
+        y1_vals.append(y1)
+        y2_vals.append(y2)
+        omega1_vals.append(omega1)
+        omega2_vals.append(omega2)
+        theta1_vals.append(theta1)
+        theta2_vals.append(theta2)
 
-# Inicjalizacja parametrów globalnych
-m1, m2 = 1.0, 1.0
-L1, L2 = 1.0, 1.0
-theta1, theta2 = 45.0, 45.0
-g = 9.8
-x1, x2, y1, y2, omega1_vals, omega2_vals  = liczenie_a(m1, m2, g, L1, L2, theta1, theta2)
+    return x1_vals, x2_vals, y1_vals, y2_vals, omega1_vals, omega2_vals
 
 
-fig, ax = plt.subplots()
-plt.subplots_adjust(bottom=0.5)
-ax.set_aspect('equal')
-ax.set_xlabel("X [m]")  
-ax.set_ylabel("Y [m]")
-ax.set_xlim(-L1-L2-1,L1+L2+1)
-ax.set_ylim(-L1-L2-1,L1+L2+1)
-linia, = ax.plot([], [], 'o-', lw=2) #musi byc przecinek bo linia, tworzy obj Line2D używany w matplitlib i funcanim - bez "," tworzy sie lista a nie obj do animacji
-trajektoria, = ax.plot([], [], 'r-', lw=0.5, alpha=0.5)
-timer = ax.text(0.05, 0.95, '', transform=ax.transAxes, fontsize=10, color='black')
-uwaga = ax.text(0.15, 0.70, '', transform=ax.transAxes, fontsize=10, color='black')
-omega1_text = ax.text(0.05, 0.85, '', transform=ax.transAxes, fontsize=10, color='blue')
-omega2_text = ax.text(0.05, 0.80, '', transform=ax.transAxes, fontsize=10, color='green')
+# Animation state
 
-# Stan animacji
- 
-
-ani = None
-
-
-paused = False  
-current_frame = 0
-
-def init():
-    linia.set_data([], [])
-    trajektoria.set_data([], [])
+def clear():
+    line.set_data([], [])
+    trajectory.set_data([], [])
     timer.set_text('')
     omega1_text.set_text('')
     omega2_text.set_text('')
-    uwaga.set_text('')
-    return linia, trajektoria, timer, omega1_text, omega2_text, uwaga
+    warning.set_text('')
+    return line, trajectory, timer, omega1_text, omega2_text, warning
+
+
 def update(frame):
-    time = frame * 0.0036
+    # use consistent dt for time calculation
+    time = frame * dt
     x = [0, x1[frame], x2[frame]]
     y = [0, y1[frame], y2[frame]]
-    linia.set_data(x, y)
-    trajektoria.set_data(x2[:frame], y2[:frame])
-    timer.set_text(f"Czas: {time:.2f} s")
-    omega1_text.set_text(f"Prędkość kątowa 1. ciała[rad/s]: {omega1_vals[frame]:.2f}")
-    omega2_text.set_text(f"Prędkość kątowa 2. ciała[rad/s]: {omega2_vals[frame]:.2f}")
-    uwaga.set_text
-    return linia, trajektoria, timer, omega1_text, omega2_text, uwaga
-
-
-
-ani = FuncAnimation(fig, update, frames=len(x1), init_func=init, blit=True, interval=0.001)
+    line.set_data(x, y)
+    trajectory.set_data(x2[:frame], y2[:frame])
+    timer.set_text(f"Time: {time:.2f} s")
+    omega1_text.set_text(f"Angular velocity 1 [rad/s]: {omega1_vals[frame]:.2f}")
+    omega2_text.set_text(f"Angular velocity 2 [rad/s]: {omega2_vals[frame]:.2f}")
+    warning.set_text('')
+    return line, trajectory, timer, omega1_text, omega2_text, warning
 
 
 def start_animation(event):
-    if not paused:
-        ani.event_source.start()  # Rozpoczynanie animacji
+    global paused
+    if paused:
+        ani.event_source.start()
+        paused = False
+    else:
+        ani.event_source.start()
+        paused = False
 
 
 def stop_animation(event):
     global paused
-    ani.pause()  # Zatrzymywanie animacji
+    if ani is not None:
+        ani.event_source.stop()
+    paused = True
 
 
-def aktualizuj_dane(event):
-    global m1, m2, L1, L2, theta1, theta2, g, x1, x2, y1, y2, ani
-    
+def update_data(event):
+    global mass1, mass2, length1, length2, theta1, theta2, gravitational_force, x1, x2, y1, y2, omega1_vals, omega2_vals, ani
+
     try:
-        m1 = float(textbox_m1.text)
-        m2 = float(textbox_m2.text)
-        L1 = float(textbox_L1.text)
-        L2 = float(textbox_L2.text)
+        mass1 = float(textbox_mass1.text)
+        mass2 = float(textbox_mass2.text)
+        length1 = float(textbox_length1.text)
+        length2 = float(textbox_length2.text)
         theta1 = float(textbox_theta1.text)
         theta2 = float(textbox_theta2.text)
-        g = float(textbox_g.text)
-        
-        if any(val < 0 for val in [m1, m2, L1, L2, theta1, theta2, g]):
-            uwaga.set_text("Wartości muszą być dodatnie.")
+        gravitational_force = float(textbox_gravitational_force.text)
+
+        if any(val < 0 for val in [mass1, mass2, length1, length2, gravitational_force]):
+            warning.set_text("Values must be positive.")
             return
 
-        x1, x2, y1, y2, omega1_vals, omega2_vals   = liczenie_a(m1, m2, g, L1, L2, theta1, theta2)
+        # generate new data
+        x1, x2, y1, y2, omega1_vals, omega2_vals = calculate_acceleration(mass1, mass2, gravitational_force, length1, length2, theta1, theta2)
 
-        ani.event_source.stop()
-        ani = FuncAnimation(fig, update, frames=len(x1), init_func=init, blit=True, interval=0.001)
-        ax.set_xlim(-L1-L2-1,L1+L2+1)
-        ax.set_ylim(-L1-L2-1,L1+L2+1)
+        # refresh animation
+        if ani is not None:
+            ani.event_source.stop()
+        ani = FuncAnimation(fig, update, frames=len(x1), init_func=clear, blit=True, interval=dt * 1000)
+        ax.set_xlim(-length1 - length2 - 1, length1 + length2 + 1)
+        ax.set_ylim(-length1 - length2 - 1, length1 + length2 + 1)
         ani.event_source.start()
-        
-        uwaga.set_text('')
-        
+        warning.set_text('')
+
     except ValueError:
-        uwaga.set_text("Wprowadź poprawne wartości liczbowe.")
+        warning.set_text("Enter valid numeric values.")
 
-# Dodanie pól tekstowych
-axbox_m1 = plt.axes([0.5, 0.05, 0.1, 0.03])
-textbox_m1 = TextBox(axbox_m1, 'Masa 1 [kg]', initial=str(m1))
 
-axbox_m2 = plt.axes([0.5, 0.1, 0.1, 0.03])
-textbox_m2 = TextBox(axbox_m2, 'Masa 2 [kg]', initial=str(m2))
+# Primary trajectory calculations
+x1, x2, y1, y2, omega1_vals, omega2_vals = calculate_acceleration(mass1, mass2, gravitational_force, length1, length2, theta1, theta2)
 
-axbox_L1 = plt.axes([0.5, 0.15, 0.1, 0.03])
-textbox_L1 = TextBox(axbox_L1, 'Długość 1 [m]', initial=str(L1))
+fig, ax = plt.subplots()
+plt.subplots_adjust(bottom=0.5)
+ax.set_aspect('equal')
+ax.set_xlabel("X [m]")
+ax.set_ylabel("Y [m]")
+ax.set_xlim(-length1 - length2 - 1, length1 + length2 + 1)
+ax.set_ylim(-length1 - length2 - 1, length1 + length2 + 1)
+line, = ax.plot([], [], 'o-', lw=2)
+trajectory, = ax.plot([], [], 'r-', lw=0.5, alpha=0.5)
+timer = ax.text(0.05, 0.95, '', transform=ax.transAxes, fontsize=10, color='black')
+warning = ax.text(0.15, 0.70, '', transform=ax.transAxes, fontsize=10, color='black')
+omega1_text = ax.text(0.05, 0.85, '', transform=ax.transAxes, fontsize=10, color='blue')
+omega2_text = ax.text(0.05, 0.80, '', transform=ax.transAxes, fontsize=10, color='green')
 
-axbox_L2 = plt.axes([0.5, 0.2, 0.1, 0.03])
-textbox_L2 = TextBox(axbox_L2, 'Długość 2 [m]', initial=str(L2))
+ani = FuncAnimation(fig, update, frames=len(x1), init_func=clear, blit=True, interval=dt * 1000)
+
+# Adding Text boxes
+axbox_mass1 = plt.axes([0.5, 0.05, 0.1, 0.03])
+textbox_mass1 = TextBox(axbox_mass1, 'Mass 1 [kg]', initial=str(mass1))
+
+axbox_mass2 = plt.axes([0.5, 0.1, 0.1, 0.03])
+textbox_mass2 = TextBox(axbox_mass2, 'Mass 2 [kg]', initial=str(mass2))
+
+axbox_length1 = plt.axes([0.5, 0.15, 0.1, 0.03])
+textbox_length1 = TextBox(axbox_length1, 'Length 1 [m]', initial=str(length1))
+
+axbox_length2 = plt.axes([0.5, 0.2, 0.1, 0.03])
+textbox_length2 = TextBox(axbox_length2, 'Length 2 [m]', initial=str(length2))
 
 axbox_theta1 = plt.axes([0.5, 0.25, 0.1, 0.03])
-textbox_theta1 = TextBox(axbox_theta1, 'Kąt 1[stopnie]', initial=str(theta1))
+textbox_theta1 = TextBox(axbox_theta1, 'Angle 1 [deg]', initial=str(theta1))
 
 axbox_theta2 = plt.axes([0.5, 0.3, 0.1, 0.03])
-textbox_theta2 = TextBox(axbox_theta2, 'Kąt 2[stopnie]', initial=str(theta2))
+textbox_theta2 = TextBox(axbox_theta2, 'Angle 2 [deg]', initial=str(theta2))
 
-axbox_g = plt.axes([0.5, 0.35, 0.1, 0.03])
-textbox_g = TextBox(axbox_g, 'Wartość przyśpieszenia(grawitacji)[m/s^2]', initial=str(g))
+axbox_gravitational_force = plt.axes([0.5, 0.35, 0.1, 0.03])
+textbox_gravitational_force = TextBox(axbox_gravitational_force, 'g [m/s^2]', initial=str(gravitational_force))
 
-# Dodanie przycisku
+# Adding buttons
 ax_button = plt.axes([0.85, 0.02, 0.1, 0.04])
-button = Button(ax_button, 'Aktualizuj')
-button.on_clicked(aktualizuj_dane)
-
+button = Button(ax_button, 'Update')
+button.on_clicked(update_data)
 
 ax_button_start = plt.axes([0.85, 0.12, 0.1, 0.04])
 button_start = Button(ax_button_start, 'Start')
 button_start.on_clicked(start_animation)
 
 ax_button_stop = plt.axes([0.85, 0.07, 0.1, 0.04])
-button_stop = Button(ax_button_stop, 'Stop (Naciśnij dwukrotnie)')
+button_stop = Button(ax_button_stop, 'Stop')
 button_stop.on_clicked(stop_animation)
-
 
 plt.show()
